@@ -1,0 +1,170 @@
+@page "/orders"
+@inject ApiService Api
+@inject AuthStateService AuthState
+@inject IJSRuntime JS
+
+<h1 class="page-title"><span class="emoji">📦</span>My Orders</h1>
+
+@if (!AuthState.IsLoggedIn)
+{
+    <div class="card card-narrow empty-state">
+        <span class="emoji">🔒</span>
+        Please <a href="/login" style="color:var(--brand-orange); font-weight:700;">login</a> to view your orders.
+    </div>
+}
+else if (orders == null)
+{
+    <p>Loading orders...</p>
+}
+else if (!orders.Any())
+{
+    <div class="card empty-state">
+        <span class="emoji">📭</span>
+        You haven't placed any orders yet. <a href="/" style="color:var(--brand-orange); font-weight:700;">Start shopping</a>!
+    </div>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; gap:1rem;">
+        @foreach (var order in orders)
+        {
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <div>
+                        <strong style="font-size:1.05rem;">Order #@order.Id</strong>
+                        <span style="color:var(--text-muted); font-size:0.85rem; margin-left:0.6rem;">@order.OrderDate.ToString("MMM dd, yyyy")</span>
+                    </div>
+                    <span class="badge @StatusBadgeClass(order.Status)" style="position:static;">@StatusText(order.Status)</span>
+                </div>
+
+                <table class="admin-table">
+                    <thead>
+                        <tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in order.Items)
+                        {
+                            <tr>
+                                <td>@item.ProductName</td>
+                                <td>@item.Quantity</td>
+                                <td>Rs. @item.UnitPrice.ToString("N2")</td>
+                                <td>Rs. @((item.UnitPrice * item.Quantity).ToString("N2"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <div style="font-size:0.85rem; color:var(--text-muted);">
+                        <div>📍 @order.ShippingAddress</div>
+                        <div>💳 @order.PaymentMethod</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <strong style="color:var(--brand-navy);">Total: Rs. @order.TotalAmount.ToString("N2")</strong>
+                        <button class="btn btn-outline btn-sm" style="color:var(--brand-navy); border-color:#ccc;" @onclick="() => DownloadInvoice(order)">🖨️ Download PDF</button>
+                        @if (order.Status == 0)
+                        {
+                            <button class="btn btn-danger btn-sm" @onclick="() => CancelOrder(order.Id)">❌ Cancel Order</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <p class="message">@message</p>
+}
+
+@code {
+    private List<ApiService.OrderDto>? orders;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState.IsLoggedIn)
+            await Load();
+    }
+
+    private async Task Load()
+    {
+        orders = await Api.GetMyOrdersAsync();
+    }
+
+    private async Task CancelOrder(int id)
+    {
+        var response = await Api.CancelOrderAsync(id);
+        message = response.IsSuccessStatusCode ? "✅ Order cancelled." : "Could not cancel this order.";
+        await Load();
+    }
+
+    // Matches backend OrderStatus enum: Pending=0, Confirmed=1, Shipped=2, Delivered=3, Cancelled=4
+    private string StatusText(int status) => status switch
+    {
+        0 => "🟡 Pending",
+        1 => "🔵 Confirmed",
+        2 => "🟣 Shipped",
+        3 => "🟢 Delivered",
+        4 => "⚫ Cancelled",
+        _ => "Unknown"
+    };
+
+    private string StatusBadgeClass(int status) => status switch
+    {
+        0 => "badge-lowstock",
+        1 => "badge-lowstock",
+        2 => "badge-instock",
+        3 => "badge-instock",
+        4 => "badge-outofstock",
+        _ => "badge-outofstock"
+    };
+
+    private async Task DownloadInvoice(ApiService.OrderDto order)
+    {
+        var rows = string.Join("", order.Items.Select(i => $@"
+            <tr>
+                <td>{i.ProductName}</td>
+                <td style='text-align:center;'>{i.Quantity}</td>
+                <td style='text-align:right;'>Rs. {i.UnitPrice:N2}</td>
+                <td style='text-align:right;'>Rs. {(i.UnitPrice * i.Quantity):N2}</td>
+            </tr>"));
+
+        var html = $@"
+        <html>
+        <head>
+            <title>Invoice - Order #{order.Id}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 40px; color: #232323; }}
+                h1 {{ color: #ff6a00; margin-bottom: 0; }}
+                .meta {{ color: #6b7280; margin-bottom: 30px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th {{ background: #131921; color: #fff; text-align: left; padding: 10px; }}
+                td {{ padding: 10px; border-bottom: 1px solid #eee; }}
+                .total-row td {{ font-weight: bold; font-size: 1.1em; border-top: 2px solid #131921; }}
+                .footer {{ margin-top: 40px; color: #9aa2ab; font-size: 0.85em; text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <h1>Nexora Tech</h1>
+            <div class='meta'>Order Invoice</div>
+            <p><strong>Order #:</strong> {order.Id}<br/>
+               <strong>Date:</strong> {order.OrderDate:MMM dd, yyyy}<br/>
+               <strong>Status:</strong> {StatusText(order.Status).Substring(2)}<br/>
+               <strong>Shipping Address:</strong> {order.ShippingAddress}<br/>
+               <strong>Payment Method:</strong> {order.PaymentMethod}</p>
+            <table>
+                <thead><tr><th>Product</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Subtotal</th></tr></thead>
+                <tbody>
+                    {rows}
+                    <tr class='total-row'><td colspan='3' style='text-align:right;'>Total</td><td style='text-align:right;'>Rs. {order.TotalAmount:N2}</td></tr>
+                </tbody>
+            </table>
+            <div class='footer'>Thank you for shopping with Nexora Tech!</div>
+        </body>
+        </html>";
+
+        await JS.InvokeVoidAsync("printInvoice", html);
+    }
+}

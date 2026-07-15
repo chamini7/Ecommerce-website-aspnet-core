@@ -1,0 +1,88 @@
+@page "/wishlist"
+@inject ApiService Api
+@inject AuthStateService AuthState
+
+<h1 class="page-title"><span class="emoji">❤️</span>My Wishlist</h1>
+
+@if (!AuthState.IsLoggedIn)
+{
+    <div class="card card-narrow empty-state">
+        <span class="emoji">🔒</span>
+        Please <a href="/login" style="color:var(--brand-orange); font-weight:700;">login</a> to view your wishlist.
+    </div>
+}
+else if (items == null)
+{
+    <p>Loading wishlist...</p>
+}
+else if (!items.Any())
+{
+    <div class="card empty-state">
+        <span class="emoji">💔</span>
+        Your wishlist is empty. <a href="/" style="color:var(--brand-orange); font-weight:700;">Browse products</a> and tap the heart icon to save some!
+    </div>
+}
+else
+{
+    <div class="product-grid">
+        @foreach (var item in items)
+        {
+            var p = item.Product;
+            if (p == null) continue;
+
+            <div class="product-card">
+                <button class="wishlist-heart active" @onclick="() => Remove(p.Id)" title="Remove from wishlist">♥</button>
+                <a href="@($"/product/{p.Id}")" style="color:inherit;">
+                    <div class="product-image">
+                        <span>📦</span>
+                        @if (!string.IsNullOrWhiteSpace(p.ImageUrl))
+                        {
+                            <img class="product-image-photo" src="@p.ImageUrl" alt="@p.Name" onerror="this.style.display='none'" />
+                        }
+                    </div>
+                </a>
+                <div class="product-body">
+                    <span class="category-tag">@p.Category</span>
+                    <h3><a href="@($"/product/{p.Id}")" style="color:inherit;">@p.Name</a></h3>
+                    <div class="price-row">
+                        <span class="price">@p.Price.ToString("N2")</span>
+                    </div>
+                    <button class="btn btn-primary btn-block" @onclick="() => AddToCart(p.Id)">🛒 Add to Cart</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <p class="message">@message</p>
+}
+
+@code {
+    private List<ApiService.WishlistItemDto>? items;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState.IsLoggedIn)
+            await Load();
+    }
+
+    private async Task Load()
+    {
+        items = await Api.GetWishlistAsync();
+    }
+
+    private async Task Remove(int productId)
+    {
+        await Api.RemoveFromWishlistAsync(productId);
+        await Load();
+    }
+
+    private async Task AddToCart(int productId)
+    {
+        var response = await Api.AddToCartAsync(productId, 1);
+        message = response.IsSuccessStatusCode ? "✅ Added to cart!" : "❌ Could not add to cart.";
+    }
+}

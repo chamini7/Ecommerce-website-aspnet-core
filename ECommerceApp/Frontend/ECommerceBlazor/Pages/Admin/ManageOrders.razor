@@ -1,0 +1,93 @@
+@page "/admin/orders"
+@layout ECommerceBlazor.Layout.AdminLayout
+@inject ApiService Api
+@inject AuthStateService AuthState
+
+<h1 class="page-title"><span class="emoji">🧾</span>Manage Orders</h1>
+
+@if (!AuthState.IsAdmin)
+{
+    <div class="card empty-state">
+        <span class="emoji">🚫</span>
+        Admins only. Please <a href="/login" style="color:var(--brand-orange); font-weight:700;">login</a> with an admin account.
+    </div>
+}
+else if (orders == null)
+{
+    <p>Loading orders...</p>
+}
+else if (!orders.Any())
+{
+    <div class="card empty-state">
+        <span class="emoji">📭</span>
+        No orders placed yet.
+    </div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr><th>Order #</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th><th>Update</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var o in orders)
+            {
+                <tr>
+                    <td>#@o.Id</td>
+                    <td>@o.OrderDate.ToString("yyyy-MM-dd")</td>
+                    <td>@string.Join(", ", o.Items.Select(i => $"{i.ProductName} x{i.Quantity}"))</td>
+                    <td>Rs. @o.TotalAmount.ToString("N2")</td>
+                    <td>@StatusText(o.Status)</td>
+                    <td>
+                        <select class="btn-sm" @onchange="e => UpdateStatus(o.Id, e)">
+                            <option value="0" selected="@(o.Status == 0)">Pending</option>
+                            <option value="1" selected="@(o.Status == 1)">Confirmed</option>
+                            <option value="2" selected="@(o.Status == 2)">Shipped</option>
+                            <option value="3" selected="@(o.Status == 3)">Delivered</option>
+                            <option value="4" selected="@(o.Status == 4)">Cancelled</option>
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <p class="message">@message</p>
+}
+
+@code {
+    private List<ApiService.OrderDto>? orders;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState.IsAdmin)
+            await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        orders = await Api.GetAllOrdersAsync();
+    }
+
+    private string StatusText(int status) => status switch
+    {
+        0 => "🟡 Pending",
+        1 => "🔵 Confirmed",
+        2 => "🟣 Shipped",
+        3 => "🟢 Delivered",
+        4 => "⚫ Cancelled",
+        _ => "Unknown"
+    };
+
+    private async Task UpdateStatus(int orderId, ChangeEventArgs e)
+    {
+        var newStatus = int.Parse(e.Value?.ToString() ?? "0");
+        var response = await Api.UpdateOrderStatusAsync(orderId, newStatus);
+        message = response.IsSuccessStatusCode ? "✅ Status updated!" : "Failed to update status.";
+        await LoadOrders();
+    }
+}

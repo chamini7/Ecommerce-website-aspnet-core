@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Nexora Tech - Electronics Store</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+    <div id="app">Loading...</div>
+    <script>
+        // Opens a clean, print-formatted invoice in a new tab and triggers the browser's
+        // print dialog - the user can then "Save as PDF" as the destination. This avoids
+        // needing a paid PDF-generation library just for a downloadable invoice.
+        window.printInvoice = (html) => {
+            const win = window.open('', '_blank');
+            win.document.write(html);
+            win.document.close();
+            win.focus();
+            setTimeout(() => win.print(), 300);
+        };
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

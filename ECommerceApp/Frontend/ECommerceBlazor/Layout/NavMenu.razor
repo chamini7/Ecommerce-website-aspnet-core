@@ -1,0 +1,46 @@
+@inject AuthStateService AuthState
+@inject NavigationManager Nav
+
+<nav class="navbar">
+    <a href="/" class="brand">💻 <span>Nexora<span class="brand-accent">Tech</span></span></a>
+
+    <div class="nav-links">
+        <a href="/">Products</a>
+        <a href="/cart">🛒 Cart</a>
+        <a href="/wishlist">❤️ Wishlist</a>
+        <a href="/orders">My Orders</a>
+        @if (AuthState.IsAdmin)
+        {
+            <a href="/admin/products" class="admin-link">⚙️ Admin</a>
+        }
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="user-area">
+        @if (AuthState.IsLoggedIn)
+        {
+            <a href="/profile" class="hi-user" style="text-decoration:none;">👋 Hi, @AuthState.FullName</a>
+            <button class="btn btn-outline" @onclick="Logout">Logout</button>
+        }
+        else
+        {
+            <a href="/login" class="btn btn-outline">Login</a>
+            <a href="/register" class="btn btn-primary">Register</a>
+        }
+    </div>
+</nav>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthState.InitializeAsync();
+        AuthState.OnChange += StateHasChanged;
+    }
+
+    private async Task Logout()
+    {
+        await AuthState.LogoutAsync();
+        Nav.NavigateTo("/", forceLoad: false);
+    }
+}

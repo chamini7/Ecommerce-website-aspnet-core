@@ -1,0 +1,158 @@
+@page "/"
+@inject ApiService Api
+@inject AuthStateService AuthState
+@inject NavigationManager Nav
+
+<div class="hero-banner">
+    <div>
+        <h1>💻 Power Up With Nexora Tech</h1>
+        <p>Genuine laptops, keyboards, mice &amp; chargers — trusted quality, unbeatable prices.</p>
+    </div>
+    <div class="hero-emoji">⚡</div>
+</div>
+
+<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; align-items:center;">
+    <div class="search-bar" style="margin-bottom:0;">
+        <input type="text" placeholder="Search products..." @bind="searchTerm" @bind:event="oninput" @onkeyup="Search" />
+        <span class="search-icon">🔍</span>
+    </div>
+
+    <select @onchange="OnCategoryChanged" style="padding:0.65rem 1rem; border:1.5px solid #e2e2e2; border-radius:6px; font-size:0.9rem;">
+        <option value="">All Categories</option>
+        @foreach (var cat in categories)
+        {
+            <option value="@cat">@cat</option>
+        }
+    </select>
+</div>
+
+@if (products == null)
+{
+    <div class="loading-state">Loading products...</div>
+}
+else if (!products.Any())
+{
+    <div class="empty-state">
+        <span class="emoji">📦</span>
+        No products found.
+    </div>
+}
+else
+{
+    <div class="product-grid">
+        @foreach (var p in products)
+        {
+            <div class="product-card">
+                <span class="badge @StockBadgeClass(p.StockQuantity)">@StockBadgeText(p.StockQuantity)</span>
+
+                @if (AuthState.IsLoggedIn)
+                {
+                    <button class="wishlist-heart @(wishlistIds.Contains(p.Id) ? "active" : "")" @onclick="() => ToggleWishlist(p.Id)" title="Save for later">
+                        @(wishlistIds.Contains(p.Id) ? "♥" : "♡")
+                    </button>
+                }
+
+                <a href="@($"/product/{p.Id}")" style="color:inherit;">
+                    <div class="product-image">
+                        <span>@CategoryEmoji(p.Category)</span>
+                        @if (!string.IsNullOrWhiteSpace(p.ImageUrl))
+                        {
+                            <img class="product-image-photo" src="@p.ImageUrl" alt="@p.Name" onerror="this.style.display='none'" />
+                        }
+                    </div>
+                </a>
+                <div class="product-body">
+                    <span class="category-tag">@p.Category</span>
+                    <h3><a href="@($"/product/{p.Id}")" style="color:inherit;">@p.Name</a></h3>
+                    <p class="desc">@p.Description</p>
+                    <div class="price-row">
+                        <span class="price">@p.Price.ToString("N2")</span>
+                        <span class="stock-note">@p.StockQuantity left</span>
+                    </div>
+                    <button class="btn btn-primary btn-block" @onclick="() => AddToCart(p.Id)" disabled="@(p.StockQuantity == 0)">
+                        🛒 Add to Cart
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <p class="@(message.StartsWith("❌") ? "error" : "message")">@message</p>
+}
+
+@code {
+    private List<ApiService.ProductDto>? products;
+    private string searchTerm = "";
+    private string selectedCategory = "";
+    private string message = "";
+    private HashSet<int> wishlistIds = new();
+    private readonly string[] categories = { "Laptops", "Keyboards", "Mouses", "Laptop Chargers", "Headphones", "Earphones" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProducts();
+        if (AuthState.IsLoggedIn)
+        {
+            var wishlist = await Api.GetWishlistAsync();
+            wishlistIds = wishlist?.Select(w => w.ProductId).ToHashSet() ?? new();
+        }
+    }
+
+    private async Task LoadProducts()
+    {
+        products = await Api.GetProductsAsync(string.IsNullOrEmpty(searchTerm) ? null : searchTerm);
+        if (!string.IsNullOrEmpty(selectedCategory))
+            products = products?.Where(p => p.Category == selectedCategory).ToList();
+    }
+
+    private async Task Search() => await LoadProducts();
+
+    private async Task OnCategoryChanged(ChangeEventArgs e)
+    {
+        selectedCategory = e.Value?.ToString() ?? "";
+        await LoadProducts();
+    }
+
+    private async Task AddToCart(int productId)
+    {
+        var response = await Api.AddToCartAsync(productId, 1);
+        message = response.IsSuccessStatusCode
+            ? "✅ Added to cart!"
+            : $"❌ Could not add to cart ({(int)response.StatusCode}). Try logging out and back in.";
+    }
+
+    private async Task ToggleWishlist(int productId)
+    {
+        if (wishlistIds.Contains(productId))
+        {
+            var response = await Api.RemoveFromWishlistAsync(productId);
+            if (response.IsSuccessStatusCode) wishlistIds.Remove(productId);
+        }
+        else
+        {
+            var response = await Api.AddToWishlistAsync(productId);
+            if (response.IsSuccessStatusCode) wishlistIds.Add(productId);
+            else message = "❌ Could not update wishlist.";
+        }
+    }
+
+    private string StockBadgeClass(int stock) =>
+        stock == 0 ? "badge-outofstock" : stock <= 10 ? "badge-lowstock" : "badge-instock";
+
+    private string StockBadgeText(int stock) =>
+        stock == 0 ? "Out of Stock" : stock <= 10 ? "Low Stock" : "In Stock";
+
+    private string CategoryEmoji(string category) => category?.ToLower() switch
+    {
+        "laptops" => "💻",
+        "keyboards" => "⌨️",
+        "mouses" => "🖱️",
+        "laptop chargers" => "🔌",
+        "headphones" => "🎧",
+        "earphones" => "🎵",
+        _ => "📦"
+    };
+}

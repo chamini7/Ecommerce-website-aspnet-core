@@ -1,0 +1,143 @@
+@page "/cart"
+@inject ApiService Api
+@inject AuthStateService AuthState
+@inject NavigationManager Nav
+
+<h1 class="page-title"><span class="emoji">🛒</span>Your Cart</h1>
+
+@if (!AuthState.IsLoggedIn)
+{
+    <div class="card card-narrow empty-state">
+        <span class="emoji">🔒</span>
+        Please <a href="/login" style="color:var(--brand-orange); font-weight:700;">login</a> to view your cart.
+    </div>
+}
+else if (cart == null)
+{
+    <p>Loading cart...</p>
+}
+else if (!cart.Items.Any())
+{
+    <div class="card empty-state">
+        <span class="emoji">🛒</span>
+        Your cart is empty. <a href="/" style="color:var(--brand-orange); font-weight:700;">Browse products</a> to add something!
+    </div>
+}
+else
+{
+    <table class="admin-table" style="margin-bottom:1.5rem;">
+        <thead>
+            <tr><th>Product</th><th>Price</th><th>Qty</th><th>Subtotal</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var item in cart.Items)
+            {
+                <tr>
+                    <td style="display:flex; align-items:center; gap:0.6rem;">
+                        @if (!string.IsNullOrWhiteSpace(item.Product?.ImageUrl))
+                        {
+                            <img class="thumb" src="@item.Product.ImageUrl" />
+                        }
+                        <span>@item.Product?.Name</span>
+                    </td>
+                    <td>Rs. @item.Product?.Price.ToString("N2")</td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <button class="btn btn-outline btn-sm" style="color:var(--brand-navy); border-color:#ccc; padding:0.2rem 0.6rem;" @onclick="() => ChangeQuantity(item.ProductId, item.Quantity - 1)" disabled="@(item.Quantity <= 1)">−</button>
+                            <span style="min-width:1.5rem; text-align:center;">@item.Quantity</span>
+                            <button class="btn btn-outline btn-sm" style="color:var(--brand-navy); border-color:#ccc; padding:0.2rem 0.6rem;" @onclick="() => ChangeQuantity(item.ProductId, item.Quantity + 1)">+</button>
+                        </div>
+                    </td>
+                    <td>Rs. @((item.Product?.Price * item.Quantity)?.ToString("N2"))</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" @onclick="() => RemoveItem(item.ProductId)">🗑️ Remove</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="card card-narrow">
+        <div class="price-row" style="display:flex; justify-content:space-between; margin-bottom:1rem;">
+            <strong>Total</strong>
+            <strong style="color:var(--brand-navy); font-size:1.3rem;">Rs. @CartTotal.ToString("N2")</strong>
+        </div>
+        <div class="form-group">
+            <label>Shipping Address</label>
+            <input @bind="shippingAddress" placeholder="Enter your delivery address" />
+        </div>
+        <div class="form-group">
+            <label>Payment Method</label>
+            <select @bind="paymentMethod" style="width:100%; padding:0.65rem 0.85rem; border:1.5px solid #e2e2e2; border-radius:6px; font-size:0.95rem;">
+                <option value="Cash on Delivery">💵 Cash on Delivery</option>
+                <option value="Card (Simulated)">💳 Credit / Debit Card</option>
+                <option value="Bank Transfer">🏦 Bank Transfer</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-block" @onclick="Checkout">✅ Checkout</button>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <p class="@(isError ? "error" : "message")">@message</p>
+        }
+    </div>
+}
+
+@code {
+    private ApiService.CartDto? cart;
+    private string shippingAddress = "";
+    private string paymentMethod = "Cash on Delivery";
+    private string message = "";
+    private bool isError = false;
+
+    private decimal CartTotal => cart?.Items.Sum(i => (i.Product?.Price ?? 0) * i.Quantity) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState.IsLoggedIn)
+            await LoadCart();
+    }
+
+    private async Task LoadCart()
+    {
+        cart = await Api.GetCartAsync();
+    }
+
+    private async Task ChangeQuantity(int productId, int newQuantity)
+    {
+        if (newQuantity < 1) return;
+        var response = await Api.UpdateCartItemAsync(productId, newQuantity);
+        if (response.IsSuccessStatusCode)
+            await LoadCart();
+        else
+        {
+            isError = true;
+            message = "❌ Could not update quantity.";
+        }
+    }
+
+    private async Task RemoveItem(int productId)
+    {
+        await Api.RemoveFromCartAsync(productId);
+        await LoadCart();
+    }
+
+    private async Task Checkout()
+    {
+        if (string.IsNullOrWhiteSpace(shippingAddress))
+        {
+            message = "Please enter a shipping address.";
+            isError = true;
+            return;
+        }
+
+        var response = await Api.CheckoutAsync(shippingAddress, paymentMethod);
+        isError = !response.IsSuccessStatusCode;
+        message = response.IsSuccessStatusCode
+            ? "🎉 Order placed successfully!"
+            : "Checkout failed. Make sure you have items in your cart.";
+
+        if (response.IsSuccessStatusCode)
+            Nav.NavigateTo("/orders");
+    }
+}
